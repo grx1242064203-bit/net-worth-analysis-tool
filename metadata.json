@@ -1,0 +1,5 @@
+{
+  "name": "Net Worth Analysis Tool",
+  "description": "An advanced tool for analyzing financial product net worth data from Excel files. It calculates key performance metrics, visualizes data through charts, and provides a customizable scoring system for different product types based on equity, fixed income, or alternative strategies.",
+  "requestFramePermissions": []
+}
