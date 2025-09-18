@@ -24,10 +24,8 @@ const MetricsTable: React.FC<{
         if (!sortConfig || sortConfig.key !== key) {
             return <i className="fa fa-sort text-gray-400 ml-1"></i>;
         }
-        if (sortConfig.direction === 'asc') {
-            return <i className="fa fa-sort-asc text-primary ml-1"></i>;
-        }
-        return <i className="fa fa-sort-desc text-primary ml-1"></i>;
+        const icon = sortConfig.direction === 'asc' ? 'fa-sort-asc' : 'fa-sort-desc';
+        return <i className={`fa ${icon} text-primary ml-1`}></i>;
     };
     
     return (
@@ -200,7 +198,7 @@ const ScoringComparisonDisplay: React.FC<{ results: ScoringResult[] }> = ({ resu
                 <tbody className="bg-white divide-y divide-gray-200">
                     <tr className="bg-white">
                         <td className="px-4 py-3 text-sm font-medium text-gray-800 sticky left-0 bg-white z-10">产品类型</td>
-                        {results.map(r => <td key={r.productName} className="px-4 py-3 text-sm text-gray-600">{r.productType}{r.isIndexEnhanced ? ' (指增)' : ''}{r.isNeutralArbitrage ? ' (中性)' : ''}</td>)}
+                        {results.map(r => <td key={r.productName} className="px-4 py-3 text-sm text-gray-600">{r.productType}{r.productType === ProductTypeEnum.Equity && r.isIndexEnhanced ? ' (指增)' : ''}{r.productType === ProductTypeEnum.Alternative && r.isNeutralArbitrage ? ' (中性)' : ''}</td>)}
                     </tr>
                     {allCriteriaKeys.map(key => (
                          <tr key={key} className="hover:bg-gray-50">
@@ -255,6 +253,7 @@ const ScoringComparisonDisplay: React.FC<{ results: ScoringResult[] }> = ({ resu
 
 
 const TimeRangeAnalysis: React.FC<{ selectedProducts: string[]; productsData: ProductsData; timeRange: string; }> = ({ selectedProducts, productsData, timeRange }) => {
+    const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
     const { timeRangeMetrics, chartConfig } = useMemo(() => {
         const metrics: AllMetrics = {};
@@ -325,6 +324,46 @@ const TimeRangeAnalysis: React.FC<{ selectedProducts: string[]; productsData: Pr
         return { timeRangeMetrics: metrics, chartConfig: config };
     }, [selectedProducts, productsData, timeRange]);
 
+    const sortedProductNames = useMemo(() => {
+        if (!timeRangeMetrics) return selectedProducts;
+        let sortableItems = [...selectedProducts];
+        if (sortConfig) {
+            sortableItems.sort((a, b) => {
+                if (sortConfig.key === 'productName') {
+                    return sortConfig.direction === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
+                }
+    
+                const aVal = timeRangeMetrics[a]?.[sortConfig.key as keyof Metrics];
+                const bVal = timeRangeMetrics[b]?.[sortConfig.key as keyof Metrics];
+    
+                if (aVal == null || (typeof aVal === 'number' && isNaN(aVal))) return 1;
+                if (bVal == null || (typeof bVal === 'number' && isNaN(bVal))) return -1;
+    
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [selectedProducts, timeRangeMetrics, sortConfig]);
+
+    const requestSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const getSortIcon = (key: string) => {
+        if (!sortConfig || sortConfig.key !== key) {
+            return <i className="fa fa-sort text-gray-400 ml-1"></i>;
+        }
+        const icon = sortConfig.direction === 'asc' ? 'fa-sort-asc' : 'fa-sort-desc';
+        return <i className={`fa ${icon} text-primary ml-1`}></i>;
+    };
+
+
     return (
         <>
             <div className="bg-white rounded-xl shadow-card p-6 mb-8">
@@ -333,12 +372,14 @@ const TimeRangeAnalysis: React.FC<{ selectedProducts: string[]; productsData: Pr
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">产品名称</th>
-                                {TIME_RANGE_METRIC_HEADERS.map(h => <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => requestSort('productName')}>
+                                    产品名称 {getSortIcon('productName')}
+                                </th>
+                                {TIME_RANGE_METRIC_HEADERS.map(h => <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => requestSort(h)}>{h} {getSortIcon(h)}</th>)}
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                           {selectedProducts.map(name => (
+                           {sortedProductNames.map(name => (
                                 <tr key={name}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{name}</td>
                                     {TIME_RANGE_METRIC_HEADERS.map(h => (
@@ -386,14 +427,12 @@ const Results: React.FC<ResultsProps> = ({ results, productsData, selectedProduc
         let sortableItems = [...selectedProducts];
         if (sortConfig) {
             sortableItems.sort((a, b) => {
-                let aVal, bVal;
                 if (sortConfig.key === 'productName') {
-                    aVal = a;
-                    bVal = b;
-                } else {
-                    aVal = results.metrics[a]?.[sortConfig.key as keyof Metrics];
-                    bVal = results.metrics[b]?.[sortConfig.key as keyof Metrics];
+                    return sortConfig.direction === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
                 }
+
+                const aVal = results.metrics[a]?.[sortConfig.key as keyof Metrics];
+                const bVal = results.metrics[b]?.[sortConfig.key as keyof Metrics];
 
                 if (aVal == null || (typeof aVal === 'number' && isNaN(aVal))) return 1;
                 if (bVal == null || (typeof bVal === 'number' && isNaN(bVal))) return -1;

@@ -140,6 +140,17 @@ const App: React.FC = () => {
             addToast(`解析基准文件失败: ${err.message}`, 'danger');
         }
     };
+
+    const handleProductTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newType = e.target.value as ProductType | '';
+        setProductType(newType);
+        if (newType !== ProductTypeEnum.Equity) {
+            setIsIndexEnhanced(false);
+        }
+        if (newType !== ProductTypeEnum.Alternative) {
+            setIsNeutralArbitrage(false);
+        }
+    };
     
     const handleScore = () => {
         if (!scoringProduct || !productType || !benchmarkData) {
@@ -351,7 +362,7 @@ const App: React.FC = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">1. 选择产品类型</label>
-                                        <select value={productType} onChange={e => setProductType(e.target.value as ProductType | '')} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                                        <select value={productType} onChange={handleProductTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
                                             <option value="">-- 请选择 --</option>
                                             {Object.values(ProductTypeEnum).map(pt => <option key={pt} value={pt}>{pt}</option>)}
                                         </select>
