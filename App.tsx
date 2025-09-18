@@ -15,7 +15,7 @@ const App: React.FC = () => {
     const [groups, setGroups] = useState<Group[]>([]);
     const [benchmarkData, setBenchmarkData] = useState<ProductDataPoint[] | null>(null);
     const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
-    const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
+    const [scoringResults, setScoringResults] = useState<ScoringResult[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [toasts, setToasts] = useState<ToastMessage[]>([]);
     
@@ -82,7 +82,7 @@ const App: React.FC = () => {
         setGroups([]);
         setBenchmarkData(null);
         setAnalysisResults(null);
-        setScoringResult(null);
+        setScoringResults([]);
         setScoringProduct('');
         setStrategyProducts([]);
         setProductType('');
@@ -181,7 +181,7 @@ const App: React.FC = () => {
                 
                 const { scores, weights } = calculateScores(productType, metrics, excessReturn, consistency, monthlyWinRate, isNeutralArbitrage, isIndexEnhanced);
                 
-                setScoringResult({ 
+                const newScoringResult: ScoringResult = { 
                     productName: scoringProduct, 
                     metrics, 
                     excessReturn, 
@@ -193,8 +193,10 @@ const App: React.FC = () => {
                     productType, 
                     isNeutralArbitrage, 
                     isIndexEnhanced 
-                });
-                addToast('打分完成', 'success');
+                };
+                
+                setScoringResults(prev => [...prev.filter(r => r.productName !== scoringProduct), newScoringResult]);
+                addToast(`“${scoringProduct}” 打分完成，可前往结果页查看对比`, 'success');
 
             } catch (err: any) {
                  addToast(`打分出错: ${err.message}`, 'danger');
@@ -395,6 +397,19 @@ const App: React.FC = () => {
                                         <i className="fa fa-calculator mr-2"></i>计算得分
                                     </button>
                                 </div>
+                                {scoringResults.length > 0 && (
+                                    <div className="mt-6 border-t pt-4">
+                                        <h3 className="font-medium mb-2 text-sm text-gray-800">已打分产品 (可在结果页对比):</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {scoringResults.map(res => (
+                                                <div key={res.productName} className="bg-secondary/10 text-secondary px-3 py-1 rounded-full text-sm flex items-center">
+                                                    <span>{res.productName} ({res.scores.total.toFixed(1)})</span>
+                                                    <button onClick={() => setScoringResults(prev => prev.filter(r => r.productName !== res.productName))} className="ml-2 text-gray-500 hover:text-danger"><i className="fa fa-times"></i></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                              </div>
                         </section>
                     </>
@@ -405,7 +420,7 @@ const App: React.FC = () => {
                         results={analysisResults} 
                         productsData={productsData} 
                         selectedProducts={selectedProducts} 
-                        scoringResult={scoringResult}
+                        scoringResults={scoringResults}
                         timeRange={timeRange}
                         onExport={handleExport}
                         groupCorrelationTables={groupCorrelationTables}

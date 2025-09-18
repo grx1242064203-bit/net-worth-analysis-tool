@@ -1,7 +1,7 @@
-
 import React, { useState, useMemo } from 'react';
 //-FIX: Import `Metrics` type to be used in type assertions later.
-import type { AnalysisResults, AllMetrics, CorrelationMatrix, ProductsData, ScoringResult, Metrics } from '../types';
+import type { AnalysisResults, AllMetrics, CorrelationMatrix, ProductsData, ScoringResult, Metrics, ProductType } from '../types';
+import { ProductType as ProductTypeEnum } from '../types';
 import { CHART_COLORS, METRIC_HEADERS, TIME_RANGE_METRIC_HEADERS } from '../constants';
 import { calculateMetrics, fmtDate } from '../utils';
 import { ChartCanvas } from './common';
@@ -14,28 +14,51 @@ const formatCell = (header: string, val: any): string => {
     return String(val);
 };
 
-const MetricsTable: React.FC<{ metrics: AllMetrics, productNames: string[] }> = ({ metrics, productNames }) => (
-    <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-                <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">产品名称</th>
-                    {METRIC_HEADERS.map(h => <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}
-                </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-                {productNames.map(name => (
-                    <tr key={name} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{name}</td>
+const MetricsTable: React.FC<{ 
+    metrics: AllMetrics, 
+    productNames: string[],
+    onSort: (key: string) => void,
+    sortConfig: { key: string, direction: 'asc' | 'desc' } | null
+}> = ({ metrics, productNames, onSort, sortConfig }) => {
+    const getSortIcon = (key: string) => {
+        if (!sortConfig || sortConfig.key !== key) {
+            return <i className="fa fa-sort text-gray-400 ml-1"></i>;
+        }
+        if (sortConfig.direction === 'asc') {
+            return <i className="fa fa-sort-asc text-primary ml-1"></i>;
+        }
+        return <i className="fa fa-sort-desc text-primary ml-1"></i>;
+    };
+    
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => onSort('productName')}>
+                            产品名称 {getSortIcon('productName')}
+                        </th>
                         {METRIC_HEADERS.map(h => (
-                            <td key={h} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatCell(h, metrics[name]?.[h])}</td>
+                            <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => onSort(h)}>
+                                {h} {getSortIcon(h)}
+                            </th>
                         ))}
                     </tr>
-                ))}
-            </tbody>
-        </table>
-    </div>
-);
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {productNames.map(name => (
+                        <tr key={name} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{name}</td>
+                            {METRIC_HEADERS.map(h => (
+                                <td key={h} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatCell(h, metrics[name]?.[h])}</td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
 
 const CorrelationTable: React.FC<{ correlation: CorrelationMatrix | null, productNames: string[] }> = ({ correlation, productNames }) => {
     if (!correlation) return null;
@@ -71,97 +94,161 @@ const CorrelationTable: React.FC<{ correlation: CorrelationMatrix | null, produc
     );
 };
 
-
-const ScoringResultsDisplay: React.FC<{ result: ScoringResult | null }> = ({ result }) => {
-    if (!result) return <p className="text-gray-500 italic">尚未进行产品打分。</p>;
-    
-    const { productName, scores, weights, productType, isNeutralArbitrage, isIndexEnhanced, metrics, excessReturn, consistency, monthlyWinRate, sharpe } = result;
-    
-    let criteria: any[] = [];
-
-    if (productType === '权益类产品') {
-        criteria = [
-            { name: '历史收益', key: 'historicalReturn', unit: '%', value: metrics['年化收益(%)'] },
-            { name: '超额收益', key: 'excessReturn', unit: '%', value: excessReturn },
-            isIndexEnhanced && { name: '月度胜率', key: 'monthlyWinRate', unit: '%', value: monthlyWinRate },
-            { name: '业绩一致性', key: 'consistency', unit: '', value: consistency },
-            { name: '近一年波动率', key: 'volatility', unit: '%', value: metrics['近一年波动率(%)'] },
-            { name: '最大回撤', key: 'maxDrawdown', unit: '%', value: metrics['最大回撤(%)'] },
-        ];
-    } else if (productType === '固定收益类产品') {
-        criteria = [
-            { name: '历史收益', key: 'historicalReturn', unit: '%', value: metrics['年化收益(%)'] },
-            { name: '超额收益', key: 'excessReturn', unit: '%', value: excessReturn },
-            { name: '业绩一致性', key: 'consistency', unit: '', value: consistency },
-            { name: '近一年波动率', key: 'volatility', unit: '%', value: metrics['近一年波动率(%)'] },
-            { name: '最大回撤', key: 'maxDrawdown', unit: '%', value: metrics['最大回撤(%)'] },
-        ];
-    } else if (productType === '商品、衍生品、另类策略') {
-        criteria = [
-            { name: '历史收益', key: 'historicalReturn', unit: '%', value: metrics['年化收益(%)'] },
-            { name: '风险调整后收益 (夏普)', key: 'sharpe', unit: '', value: sharpe },
-            { name: '月度胜率', key: 'monthlyWinRate', unit: '%', value: monthlyWinRate },
-            { name: '业绩一致性', key: 'consistency', unit: '', value: consistency },
-            { name: '风险指标 (最大回撤)', key: 'maxDrawdown', unit: '%', value: metrics['最大回撤(%)'] },
-        ];
+const SCORING_STANDARDS = {
+    [ProductTypeEnum.Equity]: {
+        name: '权益类产品评分标准',
+        criteria: [
+            { name: '历史收益 (年化)', tiers: ['≥12% 得100分', '≥8% 得66分', '≥4% 得33分'] },
+            { name: '超额收益 (年化)', tiers: ['≥12% 得100分', '≥8% 得66分', '≥4% 得33分'] },
+            { name: '月度胜率 (指数增强)', tiers: ['≥60% 得100分', '≥50% 得50分'] },
+            { name: '业绩一致性', tiers: ['≥0.95 得100分', '≥0.90 得50分'] },
+            { name: '近一年波动率', tiers: ['≤20% 得100分', '≤25% 得66分', '≤30% 得33分'] },
+            { name: '最大回撤', tiers: ['≤20% 得100分', '≤30% 得75分', '≤40% 得50分', '≤50% 得25分'] },
+        ]
+    },
+    [ProductTypeEnum.FixedIncome]: {
+        name: '固定收益类产品评分标准',
+        criteria: [
+            { name: '历史收益 (年化)', tiers: ['≥4% 得100分', '≥2.5% 得66分', '≥1.5% 得33分'] },
+            { name: '超额收益 (年化)', tiers: ['≥4% 得100分', '≥2% 得66分', '≥0% 得33分'] },
+            { name: '业绩一致性', tiers: ['≥0.97 得100分', '≥0.92 得50分'] },
+            { name: '近一年波动率', tiers: ['≤1% 得100分', '≤2% 得66分', '≤3.5% 得33分'] },
+            { name: '最大回撤', tiers: ['≤2% 得100分', '≤4% 得66分', '≤8% 得33分'] },
+        ]
+    },
+    [ProductTypeEnum.Alternative]: {
+        name: '商品、衍生品、另类策略评分标准',
+        criteria: [
+            { name: '历史收益 (中性策略)', tiers: ['≥6% 得100分', '≥4% 得66分', '≥2% 得33分'] },
+            { name: '历史收益 (其他)', tiers: ['≥12% 得100分', '≥8% 得66分', '≥4% 得33分'] },
+            { name: '风险调整后收益 (夏普)', tiers: ['≥1.5 得100分', '≥1.0 得66分', '≥0.7 得33分'] },
+            { name: '月度胜率', tiers: ['≥60% 得100分', '≥50% 得50分'] },
+            { name: '业绩一致性', tiers: ['≥0.95 得100分', '≥0.90 得50分'] },
+            { name: '最大回撤', tiers: ['≤5% 得100分', '≤15% 得66分', '≤30% 得33分'] },
+        ]
     }
-    criteria = criteria.filter(Boolean);
+};
 
+const ScoringStandardsDisplay: React.FC<{ productType: ProductType }> = ({ productType }) => {
+    const standards = SCORING_STANDARDS[productType];
+    if (!standards) return null;
+
+    return (
+        <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+            <h4 className="font-semibold text-md mb-3">{standards.name}</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {standards.criteria.map(c => (
+                    <div key={c.name}>
+                        <p className="font-medium text-sm text-gray-800">{c.name}</p>
+                        <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 mt-1">
+                            {c.tiers.map(t => <li key={t}>{t}</li>)}
+                        </ul>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const ScoringComparisonDisplay: React.FC<{ results: ScoringResult[] }> = ({ results }) => {
+    if (!results || results.length === 0) {
+        return <p className="text-gray-500 italic">尚未进行产品打分。请在“产品打分设置”中选择产品并计算得分。</p>;
+    }
 
     const getRating = (score: number) => {
-        if (score >= 80) return { text: '优秀', color: 'text-green-600', bg: 'bg-green-50 border-green-200' };
-        if (score >= 60) return { text: '良好', color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-200' };
-        if (score >= 40) return { text: '一般', color: 'text-orange-500', bg: 'bg-orange-50 border-orange-200' };
-        return { text: '较差', color: 'text-red-600', bg: 'bg-red-50 border-red-200' };
+        if (score >= 80) return { text: '优秀', color: 'text-green-600' };
+        if (score >= 60) return { text: '良好', color: 'text-yellow-600' };
+        if (score >= 40) return { text: '一般', color: 'text-orange-500' };
+        return { text: '较差', color: 'text-red-600' };
+    };
+    
+    const getScoreColor = (score: number) => {
+        return score >= 66 ? 'text-green-600 font-semibold' : score >= 33 ? 'text-yellow-600' : 'text-red-600';
     };
 
-    const rating = getRating(scores.total);
+    const criteriaMap: Record<string, string> = {
+        historicalReturn: '历史收益',
+        excessReturn: '超额收益',
+        monthlyWinRate: '月度胜率',
+        consistency: '业绩一致性',
+        volatility: '近一年波动率',
+        maxDrawdown: '最大回撤',
+        sharpe: '夏普比率',
+    };
     
-    const subType = isNeutralArbitrage ? ' - 中性套利' : isIndexEnhanced ? ' - 指数增强' : '';
+    const allCriteriaKeys = useMemo(() => {
+        const keys = new Set<string>();
+        results.forEach(r => Object.keys(r.scores).forEach(k => k !== 'total' && keys.add(k)));
+        return Object.keys(criteriaMap).filter(k => keys.has(k));
+    }, [results]);
+
+    const productTypes = [...new Set(results.map(r => r.productType))];
 
     return (
         <div className="overflow-x-auto">
-            <h3 className="text-lg font-semibold mb-4">{productName} 打分结果 ({productType}{subType})</h3>
-            <div className={`mb-6 p-4 rounded-lg ${rating.bg}`}>
-                <div className="flex items-center justify-between">
-                     <div>
-                        <span className="font-semibold">总体评级：</span>
-                        <span className={`text-lg font-bold ${rating.color}`}>{rating.text}</span>
-                    </div>
-                    <div className="text-2xl font-bold text-primary">总分: {scores.total.toFixed(2)}</div>
-                </div>
-            </div>
-            
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full divide-y divide-gray-200 border">
                 <thead className="bg-gray-50">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">指标</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">数值</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">权重</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">得分</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">加权得分</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 z-10">指标</th>
+                        {results.map(r => (
+                            <th key={r.productName} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                {r.productName}
+                            </th>
+                        ))}
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                {criteria.map((c: any) => {
-                    if (!c.key || weights[c.key] === undefined) return null;
-                    const score = scores[c.key];
-                    const weight = weights[c.key];
-                    const weightedScore = score * weight;
-                     const scoreColor = score >= 66 ? 'text-green-600 font-semibold' : score >= 33 ? 'text-yellow-600' : 'text-red-600';
-
-                    return (
-                        <tr key={c.key} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{c.name}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{isNaN(c.value) ? '-' : `${c.value.toFixed(2)}${c.unit}`}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{`${(weight * 100).toFixed(0)}%`}</td>
-                            <td className={`px-6 py-4 whitespace-nowrap text-sm ${scoreColor}`}>{isNaN(score) ? '-' : score.toFixed(2)}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{isNaN(weightedScore) ? '-' : weightedScore.toFixed(2)}</td>
+                    <tr className="bg-white">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-800 sticky left-0 bg-white z-10">产品类型</td>
+                        {results.map(r => <td key={r.productName} className="px-4 py-3 text-sm text-gray-600">{r.productType}{r.isIndexEnhanced ? ' (指增)' : ''}{r.isNeutralArbitrage ? ' (中性)' : ''}</td>)}
+                    </tr>
+                    {allCriteriaKeys.map(key => (
+                         <tr key={key} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-800 sticky left-0 bg-white hover:bg-gray-50 z-10">{criteriaMap[key]}</td>
+                            {results.map(r => {
+                                const score = r.scores[key];
+                                const weight = r.weights[key];
+                                if (score === undefined || weight === undefined) {
+                                    return <td key={r.productName} className="px-4 py-3 text-sm text-gray-400">-</td>
+                                }
+                                const value = key === 'historicalReturn' ? r.metrics['年化收益(%)']
+                                            : key === 'excessReturn' ? r.excessReturn
+                                            : key === 'monthlyWinRate' ? r.monthlyWinRate
+                                            : key === 'consistency' ? r.consistency
+                                            : key === 'volatility' ? r.metrics['近一年波动率(%)']
+                                            : key === 'maxDrawdown' ? r.metrics['最大回撤(%)']
+                                            : r.sharpe;
+                                 const valueUnit = key.includes('Return') || key.includes('volatility') || key.includes('Drawdown') || key.includes('Rate') ? '%' : '';
+                                 const weightedScore = score * weight;
+                                return (
+                                    <td key={r.productName} className="px-4 py-3 text-sm text-gray-600">
+                                        <div title={`权重: ${(weight*100).toFixed(0)}%`}>
+                                            值: {isNaN(value) ? '-' : `${value.toFixed(2)}${valueUnit}`}<br/>
+                                            <span className={getScoreColor(score)}>得分: {isNaN(score) ? '-' : score.toFixed(2)}</span><br/>
+                                            加权分: {isNaN(weightedScore) ? '-' : weightedScore.toFixed(2)}
+                                        </div>
+                                    </td>
+                                )
+                            })}
                         </tr>
-                    );
-                })}
+                    ))}
+                    <tr className="bg-gray-50 font-bold">
+                        <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-50 z-10">总分</td>
+                        {results.map(r => <td key={r.productName} className="px-4 py-3 text-lg text-primary">{r.scores.total.toFixed(2)}</td>)}
+</tr>
+                    <tr className="bg-white">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-800 sticky left-0 bg-white z-10">总体评级</td>
+                        {results.map(r => {
+                            const rating = getRating(r.scores.total);
+                            return <td key={r.productName} className={`px-4 py-3 text-sm font-bold ${rating.color}`}>{rating.text}</td>
+                        })}
+                    </tr>
                 </tbody>
             </table>
+            <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4"><i className="fa fa-book text-primary mr-2"></i>打分标准详情</h3>
+                {productTypes.map(type => <ScoringStandardsDisplay key={type} productType={type} />)}
+            </div>
         </div>
     );
 };
@@ -278,20 +365,54 @@ interface ResultsProps {
     results: AnalysisResults | null;
     productsData: ProductsData;
     selectedProducts: string[];
-    scoringResult: ScoringResult | null;
+    scoringResults: ScoringResult[];
     timeRange: string;
     onExport: () => void;
     groupCorrelationTables: React.ReactNode;
 }
 
-const Results: React.FC<ResultsProps> = ({ results, productsData, selectedProducts, scoringResult, timeRange, onExport, groupCorrelationTables }) => {
+const Results: React.FC<ResultsProps> = ({ results, productsData, selectedProducts, scoringResults, timeRange, onExport, groupCorrelationTables }) => {
     const [activeTab, setActiveTab] = useState('metrics');
+    const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
     const TABS = [
         { id: 'metrics', label: '指标汇总' },
         { id: 'time-range', label: '时间区间分析' },
         { id: 'scoring', label: '产品打分' },
     ];
+    
+    const sortedProductNames = useMemo(() => {
+        if (!results) return [];
+        let sortableItems = [...selectedProducts];
+        if (sortConfig) {
+            sortableItems.sort((a, b) => {
+                let aVal, bVal;
+                if (sortConfig.key === 'productName') {
+                    aVal = a;
+                    bVal = b;
+                } else {
+                    aVal = results.metrics[a]?.[sortConfig.key as keyof Metrics];
+                    bVal = results.metrics[b]?.[sortConfig.key as keyof Metrics];
+                }
+
+                if (aVal == null || (typeof aVal === 'number' && isNaN(aVal))) return 1;
+                if (bVal == null || (typeof bVal === 'number' && isNaN(bVal))) return -1;
+
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [selectedProducts, results, sortConfig]);
+
+    const requestSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
 
     const { netValueChartConfig, drawdownChartConfig } = useMemo(() => {
         if (!results) return { netValueChartConfig: null, drawdownChartConfig: null };
@@ -354,7 +475,12 @@ const Results: React.FC<ResultsProps> = ({ results, productsData, selectedProduc
                 <div>
                     <div className="bg-white rounded-xl shadow-card p-6 mb-8">
                         <h2 className="text-lg font-semibold mb-4"><i className="fa fa-table text-primary mr-2"></i>指标汇总</h2>
-                        <MetricsTable metrics={results.metrics} productNames={selectedProducts} />
+                        <MetricsTable 
+                            metrics={results.metrics} 
+                            productNames={sortedProductNames} 
+                            onSort={requestSort}
+                            sortConfig={sortConfig}
+                        />
                     </div>
                     {selectedProducts.length >= 2 && (
                       <div className="bg-white rounded-xl shadow-card p-6 mb-8">
@@ -382,8 +508,8 @@ const Results: React.FC<ResultsProps> = ({ results, productsData, selectedProduc
 
             {activeTab === 'scoring' && (
                 <div className="bg-white rounded-xl shadow-card p-6 mb-8">
-                    <h2 className="text-lg font-semibold mb-4"><i className="fa fa-star text-primary mr-2"></i>产品打分结果</h2>
-                    <ScoringResultsDisplay result={scoringResult} />
+                    <h2 className="text-lg font-semibold mb-4"><i className="fa fa-star text-primary mr-2"></i>产品打分结果对比</h2>
+                    <ScoringComparisonDisplay results={scoringResults} />
                 </div>
             )}
             
